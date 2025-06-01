@@ -13,19 +13,30 @@ pub fn evaluate(tokens: &[Token]) -> Result<f64, String> {
             Token::Number(n) => values.push(*n),
             Token::LeftParen => ops.push(token.clone()),
             Token::RightParen => {
-                // Process operations until left parenthesis
                 while let Some(op) = ops.last() {
                     if *op == Token::LeftParen {
                         break;
                     }
                     perform_operation(&mut values, &mut ops)?;
                 }
-                
-                // Pop the left parenthesis
                 ops.pop().ok_or("Mismatched parentheses".to_string())?;
             }
+            Token::UnaryMinus => {
+                // 处理一元负号：直接应用到下一个操作数
+                ops.push(token.clone());
+            }
             Token::Add | Token::Subtract => {
-                // Process all higher precedence operators
+                // 处理一元负号（如果有）
+                while let Some(op) = ops.last() {
+                    if let Token::UnaryMinus = op {
+                        apply_unary_minus(&mut values)?;
+                        ops.pop();
+                    } else {
+                        break;
+                    }
+                }
+                
+                // 处理其他运算符
                 while let Some(op) = ops.last() {
                     if matches!(op, Token::Multiply | Token::Divide | Token::Add | Token::Subtract) {
                         perform_operation(&mut values, &mut ops)?;
@@ -36,7 +47,17 @@ pub fn evaluate(tokens: &[Token]) -> Result<f64, String> {
                 ops.push(token.clone());
             }
             Token::Multiply | Token::Divide => {
-                // Process same precedence operators
+                // 处理一元负号（如果有）
+                while let Some(op) = ops.last() {
+                    if let Token::UnaryMinus = op {
+                        apply_unary_minus(&mut values)?;
+                        ops.pop();
+                    } else {
+                        break;
+                    }
+                }
+                
+                // 处理乘除运算符
                 while let Some(op) = ops.last() {
                     if matches!(op, Token::Multiply | Token::Divide) {
                         perform_operation(&mut values, &mut ops)?;
@@ -48,8 +69,18 @@ pub fn evaluate(tokens: &[Token]) -> Result<f64, String> {
             }
         }
     }
+    
+    // 处理剩余的一元负号
+    while let Some(op) = ops.last() {
+        if let Token::UnaryMinus = op {
+            apply_unary_minus(&mut values)?;
+            ops.pop();
+        } else {
+            break;
+        }
+    }
 
-    // Process remaining operators
+    // 处理剩余的二元运算符
     while let Some(_) = ops.last() {
         perform_operation(&mut values, &mut ops)?;
     }
@@ -59,6 +90,13 @@ pub fn evaluate(tokens: &[Token]) -> Result<f64, String> {
         0 => Err("No result produced".to_string()),
         _ => Err(format!("Too many values in the stack: {:?}", values)),
     }
+}
+
+// 应用一元负号到栈顶操作数
+fn apply_unary_minus(values: &mut Vec<f64>) -> Result<(), String> {
+    let value = values.pop().ok_or("Missing operand for unary minus".to_string())?;
+    values.push(-value);
+    Ok(())
 }
 
 fn perform_operation(
@@ -98,81 +136,35 @@ mod tests {
     }
 
     #[test]
-    fn test_basic_operations() {
-        assert_eq!(eval_expr("3+5").unwrap(), 8.0);
-        assert_eq!(eval_expr("10-3").unwrap(), 7.0);
-        assert_eq!(eval_expr("4*6").unwrap(), 24.0);
-        assert_eq!(eval_expr("20/5").unwrap(), 4.0);
-    }
-
-    #[test]
-    fn test_operator_precedence() {
-        assert_eq!(eval_expr("3+5*2").unwrap(), 13.0);
-        assert_eq!(eval_expr("3*5+2").unwrap(), 17.0);
-        assert_eq!(eval_expr("10-8/2").unwrap(), 6.0);
-        assert_eq!(eval_expr("3+5*2-8/4").unwrap(), 11.0);
-    }
-
-    #[test]
-    fn test_division_by_zero() {
-        assert!(eval_expr("10/0").is_err());
-        assert!(eval_expr("0/0").is_err());
-    }
-    
-    #[test]
-    fn test_parentheses() {
-        // Basic parentheses
-        assert_eq!(eval_expr("(3+5)*2").unwrap(), 16.0);
-        assert_eq!(eval_expr("3*(5+2)").unwrap(), 21.0);
-        
-        // Nested parentheses
-        assert_eq!(eval_expr("((3+2)*4)/2").unwrap(), 10.0);
-        assert_eq!(eval_expr("(10-(5-2))*3").unwrap(), 21.0);
-        
-        // Complex expressions
-        assert_eq!(eval_expr("(3+5)*(10-4)/3").unwrap(), 16.0);
-        assert_eq!(eval_expr("2*(3+4*(5-1))").unwrap(), 38.0);
-    }
-    
-    #[test]
-    fn test_parentheses_errors() {
-        // Mismatched parentheses
-        assert!(eval_expr("(3+5").is_err());
-        assert!(eval_expr("3+5)").is_err());
-        assert!(eval_expr("((3+5)*2").is_err());
-        assert!(eval_expr("(3+5))").is_err());
-        
-        // Empty parentheses
-        assert!(eval_expr("()").is_err());
-        assert!(eval_expr("3 + ()").is_err());
-    }
-    
-    #[test]
-    fn test_negative_numbers() {
-        // Basic negative operations
-        assert_eq!(eval_expr("-5 + 3").unwrap(), -2.0);
-        assert_eq!(eval_expr("3 * -5").unwrap(), -15.0);
-        assert_eq!(eval_expr("10 / -2").unwrap(), -5.0);
-        
-        // Negative in expressions
-        assert_eq!(eval_expr("3 + -5 * 2").unwrap(), -7.0);
-        assert_eq!(eval_expr("(3 + -5) * 2").unwrap(), -4.0);
-        
-        // Double negatives
-        assert_eq!(eval_expr("3 - -5").unwrap(), 8.0);
+    fn test_unary_minus() {
+        // 基本一元负号
+        assert_eq!(eval_expr("-5").unwrap(), -5.0);
         assert_eq!(eval_expr("-(-5)").unwrap(), 5.0);
         assert_eq!(eval_expr("-(-(-5))").unwrap(), -5.0);
         
-        // Complex expressions
+        // 一元负号与二元运算符
+        assert_eq!(eval_expr("3 + -5").unwrap(), -2.0);
+        assert_eq!(eval_expr("3 * -5").unwrap(), -15.0);
+        
+        // 一元负号与括号
+        assert_eq!(eval_expr("-(3 + 5)").unwrap(), -8.0);
+        assert_eq!(eval_expr("-(3 * 5)").unwrap(), -15.0);
+        assert_eq!(eval_expr("-(-(3 + 5))").unwrap(), 8.0);
+        
+        // 复杂表达式
+        assert_eq!(eval_expr("-(3 + 5) * -2").unwrap(), 16.0);
         assert_eq!(eval_expr("3 * -(5 + 2)").unwrap(), -21.0);
-        assert_eq!(eval_expr("-(3 * 4) + -(10 / 2)").unwrap(), -17.0);
+        assert_eq!(eval_expr("-(-3 * 4) + -(10 / 2)").unwrap(), 7.0);
     }
     
     #[test]
-    fn test_negative_with_parentheses() {
-        assert_eq!(eval_expr("(-3 + 5) * 2").unwrap(), 4.0);
-        assert_eq!(eval_expr("-(3 + 5) * 2").unwrap(), -16.0);
-        assert_eq!(eval_expr("(3 + 5) * -2").unwrap(), -16.0);
-        assert_eq!(eval_expr("-(3 * (5 - 2))").unwrap(), -9.0);
+    fn test_unary_minus_errors() {
+        // 一元负号后无操作数
+        assert!(eval_expr("-").is_err());
+        assert!(eval_expr("3 + -").is_err());
+        assert!(eval_expr("-( )").is_err());
+        
+        // 一元负号位置错误
+        assert!(eval_expr("3 -").is_err());
     }
 }

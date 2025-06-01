@@ -1,12 +1,11 @@
 mod cli;
 mod evaluator;
-mod parser;
-
+mod history;
+mod parser; // 新增历史模块
 use cli::run;
-
 fn main() {
     if let Err(e) = run() {
-        eprintln!("程序错误: {}", e);
+        eprintln!("Program error: {}", e);
         std::process::exit(1);
     }
 }
@@ -14,7 +13,6 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use crate::{evaluator::evaluate, parser::Lexer};
-
     #[test]
     fn test_integration() {
         let input = "3+5*2-8/4";

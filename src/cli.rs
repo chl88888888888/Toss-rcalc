@@ -1,14 +1,16 @@
-use crate::{evaluator::evaluate, parser::Lexer};
+use crate::evaluator::evaluate;
+use crate::parser::Lexer;
+use crate::history::{HistoryManager, HistoryEntry, current_timestamp};
 use std::io::{self, Write};
 
 /// 运行交互式计算器
 pub fn run() -> Result<(), String> {
     println!("Welcome to the Rust Math Calculator");
-    println!("Supported operators: , -, *, /, ()");
-    println!("Type 'help' to see help, 'exit' to exit the program");
+    println!("Supported operators: +, -, *, /, ( )");
+    println!("Type 'help' for help, 'exit' to exit the program");
     
-    // 历史记录: 存储 (表达式, 结果) 元组
-    let mut history: Vec<(String, f64)> = Vec::new();
+    // 创建历史管理器
+    let history_manager = HistoryManager::new("history/history.json", 50);
     
     loop {
         // 显示提示符
@@ -24,7 +26,7 @@ pub fn run() -> Result<(), String> {
         
         // 处理退出命令
         if input.eq_ignore_ascii_case("exit") || input.is_empty() {
-            println!("Thanks for using and goodbye");
+            println!("Thank you for using and goodbye");
             return Ok(());
         }
         
@@ -42,26 +44,35 @@ pub fn run() -> Result<(), String> {
         
         // 处理历史记录命令
         if input.eq_ignore_ascii_case("history") {
-            show_history(&history);
+            show_history(&history_manager);
+            continue;
+        }
+        
+        // 处理清空历史命令
+        if input.eq_ignore_ascii_case("clearhistory") {
+            history_manager.clear_history()
+                .map_err(|e| format!("Failed to clear history: {}", e))?;
+            println!("History cleared");
             continue;
         }
         
         // 执行计算
         match calculate(input) {
             Ok(result) => {
-                // 打印结果
                 println!(" = {}", result);
                 
-                // 保存成功的历史记录 (表达式, 结果)
-                history.push((input.to_string(), result));
+                // 保存成功的历史记录
+                let entry = HistoryEntry {
+                    expression: input.to_string(),
+                    result,
+                    timestamp: current_timestamp(),
+                };
                 
-                // 限制历史记录大小
-                if history.len() > 20 {
-                    history.remove(0); // 只保留最近20条历史
+                if let Err(e) = history_manager.add_entry(entry) {
+                    eprintln!("Warning: Failed to save history: {}", e);
                 }
             }
             Err(e) => {
-                // 出错时不保存历史记录
                 println!("Error: {}", e);
             }
         }
@@ -77,18 +88,19 @@ fn calculate(input: &str) -> Result<f64, String> {
 
 /// 显示帮助信息
 fn show_help() {
-    println!("\nDirections for use:");
-    println!("  Enter a mathematical expression to calculate, for example: 3 5*2");
+    println!("\nUsage:");
+    println!("  Enter a mathematical expression to calculate, e.g., 3+5*2");
     println!("  Decimals are supported: 3.14, 0.5");
     println!("  Spaces are supported: 10 + 5 * 2");
-    println!("  Parentheses are supported: ( 10 + 5 ) * ( 6 )");
-    println!("  Minus are supported: - 5 * ( - 6 - 1 )");
-    println!("\nCLI:");
-    println!("  help    - Displays help information");
-    println!("  clear   - Clear the screen");
-    println!("  history - Display history");
-    println!("  exit    - Exit the program");
-    println!("\nThings for attention:");
+    println!("  Parentheses are supported: (3+5)*2");
+    println!("  Minus are supported: -5 + 3");
+    println!("\nCommands:");
+    println!("  help         - Displays help information");
+    println!("  clear        - Clear the screen");
+    println!("  history      - Display history");
+    println!("  clearhistory - Clear history");
+    println!("  exit         - Exit the program");
+    println!("\nNotes:");
     println!("  * The divisor cannot be 0 in a division operation");
     println!("  * Function customization is not supported at this time");
 }
@@ -99,14 +111,25 @@ fn clear_screen() {
 }
 
 /// 显示历史记录
-fn show_history(history: &[(String, f64)]) {
-    if history.is_empty() {
-        println!("No history");
-        return;
-    }
-    
-    println!("History:");
-    for (i, (expr, result)) in history.iter().enumerate() {
-        println!("{:2}. {} = {}", i + 1, expr, result);
+fn show_history(manager: &HistoryManager) {
+    match manager.get_history() {
+        Ok(history) => {
+            if history.is_empty() {
+                println!("No history");
+                return;
+            }
+            
+            println!("History:");
+            for (i, entry) in history.iter().rev().enumerate() {
+                println!("{:2}. {} = {} [{}]", 
+                    i + 1, 
+                    entry.expression, 
+                    entry.result,
+                    entry.timestamp);
+            }
+        }
+        Err(e) => {
+            println!("Failed to load history: {}", e);
+        }
     }
 }
