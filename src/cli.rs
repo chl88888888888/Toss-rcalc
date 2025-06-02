@@ -3,8 +3,8 @@ use crate::parser::Lexer;
 use crate::history::{HistoryManager, HistoryEntry, current_timestamp};
 use std::io::{self, Write};
 
-/// 运行交互式计算器
-pub fn run() -> Result<(), String> {
+/// 运行交互式计算器 (异步)
+pub async fn run() -> Result<(), String> {
     println!("Welcome to the Rust Math Calculator");
     println!("Supported operators: +, -, *, /, ( ), %, ^");
     println!("Type 'help' for help, 'exit' to exit the program");
@@ -44,13 +44,14 @@ pub fn run() -> Result<(), String> {
         
         // 处理历史记录命令
         if input.eq_ignore_ascii_case("history") {
-            show_history(&history_manager);
+            show_history(&history_manager).await;
             continue;
         }
         
         // 处理清空历史命令
         if input.eq_ignore_ascii_case("clearhistory") {
             history_manager.clear_history()
+                .await
                 .map_err(|e| format!("Failed to clear history: {}", e))?;
             println!("History cleared");
             continue;
@@ -61,16 +62,21 @@ pub fn run() -> Result<(), String> {
             Ok(result) => {
                 println!(" = {}", result);
                 
-                // 保存成功的历史记录
+                // 保存成功的历史记录 (异步)
                 let entry = HistoryEntry {
                     expression: input.to_string(),
                     result,
                     timestamp: current_timestamp(),
                 };
                 
-                if let Err(e) = history_manager.add_entry(entry) {
-                    eprintln!("Warning: Failed to save history: {}", e);
-                }
+                // 使用公共方法克隆管理器
+                let manager_clone = history_manager.clone_manager();
+                
+                tokio::spawn(async move {
+                    if let Err(e) = manager_clone.add_entry(entry).await {
+                        eprintln!("Warning: Failed to save history: {}", e);
+                    }
+                });
             }
             Err(e) => {
                 println!("Error: {}", e);
@@ -110,9 +116,9 @@ fn clear_screen() {
     print!("{esc}[2J{esc}[1;1H", esc = 27 as char);
 }
 
-/// 显示历史记录
-fn show_history(manager: &HistoryManager) {
-    match manager.get_history() {
+/// 显示历史记录 (异步)
+async fn show_history(manager: &HistoryManager) {
+    match manager.get_history().await {
         Ok(history) => {
             if history.is_empty() {
                 println!("No history");

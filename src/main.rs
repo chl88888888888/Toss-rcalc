@@ -1,10 +1,11 @@
 mod cli;
 mod evaluator;
 mod history;
-mod parser; // 新增历史模块
-use cli::run;
-fn main() {
-    if let Err(e) = run() {
+mod parser;
+
+#[tokio::main]
+async fn main() {
+    if let Err(e) = cli::run().await {
         eprintln!("Program error: {}", e);
         std::process::exit(1);
     }
