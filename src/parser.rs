@@ -7,7 +7,9 @@ pub enum Token {
     Divide,
     LeftParen,
     RightParen,
-    UnaryMinus,  // 新增一元负号运算符
+    UnaryMinus,
+    Modulo,
+    Power,
 }
 
 pub struct Lexer<'a> {
@@ -34,39 +36,24 @@ impl<'a> Lexer<'a> {
                 }
                 '-' => {
                     self.chars.next();
-                    
-                    // 检查是否是一元负号（表达式开头、运算符后或左括号后）
-                    let is_unary = tokens.is_empty() || 
-                        matches!(tokens.last(), 
-                            Some(Token::Add) | 
-                            Some(Token::Subtract) | 
-                            Some(Token::Multiply) | 
-                            Some(Token::Divide) | 
-                            Some(Token::LeftParen) |
-                            Some(Token::UnaryMinus));
-                    
+
+                    // 检查是否是一元负号
+                    let is_unary = tokens.is_empty()
+                        || matches!(
+                            tokens.last(),
+                            Some(Token::Add)
+                                | Some(Token::Subtract)
+                                | Some(Token::Multiply)
+                                | Some(Token::Divide)
+                                | Some(Token::LeftParen)
+                                | Some(Token::UnaryMinus)
+                                | Some(Token::Modulo)
+                                | Some(Token::Power)
+                        );
+
                     if is_unary {
-                        // 一元负号：检查后面是数字还是括号
-                        if let Some(next_c) = self.chars.peek() {
-                            match next_c {
-                                '0'..='9' | '.' => {
-                                    // 负号后跟数字：解析负数
-                                    let num = self.parse_number()?;
-                                    tokens.push(Token::Number(-num));
-                                }
-                                '(' => {
-                                    // 负号后跟括号：添加一元负号Token
-                                    tokens.push(Token::UnaryMinus);
-                                }
-                                _ => {
-                                    return Err("Expected number or '(' after unary minus".to_string());
-                                }
-                            }
-                        } else {
-                            return Err("Unexpected end after '-'".to_string());
-                        }
+                        tokens.push(Token::UnaryMinus);
                     } else {
-                        // 普通减法运算符
                         tokens.push(Token::Subtract);
                     }
                 }
@@ -76,6 +63,14 @@ impl<'a> Lexer<'a> {
                 }
                 '/' => {
                     tokens.push(Token::Divide);
+                    self.chars.next();
+                }
+                '%' => {
+                    tokens.push(Token::Modulo);
+                    self.chars.next();
+                }
+                '^' => {
+                    tokens.push(Token::Power);
                     self.chars.next();
                 }
                 '(' => {
@@ -111,7 +106,9 @@ impl<'a> Lexer<'a> {
         if num_str.is_empty() {
             return Err("Expected number".to_string());
         }
-        num_str.parse::<f64>().map_err(|_| "Invalid number format".to_string())
+        num_str
+            .parse::<f64>()
+            .map_err(|_| "Invalid number format".to_string())
     }
 }
 
@@ -127,14 +124,14 @@ mod tests {
         assert_eq!(
             tokens,
             vec![
-                Token::UnaryMinus,   // 第一个负号
+                Token::UnaryMinus, // 第一个负号
                 Token::LeftParen,
-                Token::UnaryMinus,   // 括号内的负号
+                Token::UnaryMinus,
                 Token::Number(5.0),
                 Token::RightParen
             ]
         );
-        
+
         let input = "-(3 + 5)";
         let mut lexer = Lexer::new(input);
         let tokens = lexer.tokenize().unwrap();
@@ -150,7 +147,7 @@ mod tests {
             ]
         );
     }
-    
+
     #[test]
     fn test_complex_negatives() {
         let input = "3 + -(-5 * 2)";
@@ -161,13 +158,51 @@ mod tests {
             vec![
                 Token::Number(3.0),
                 Token::Add,
-                Token::UnaryMinus,   // 负号
+                Token::UnaryMinus, // 负号
                 Token::LeftParen,
-                Token::UnaryMinus,   // 括号内的负号
+                Token::UnaryMinus,
                 Token::Number(5.0),
                 Token::Multiply,
                 Token::Number(2.0),
                 Token::RightParen
+            ]
+        );
+    }
+
+    #[test]
+    fn test_modulo_and_power() {
+        // 取模运算
+        let input = "10 % 3";
+        let mut lexer = Lexer::new(input);
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![Token::Number(10.0), Token::Modulo, Token::Number(3.0)]
+        );
+
+        // 幂运算
+        let input = "2 ^ 3";
+        let mut lexer = Lexer::new(input);
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![Token::Number(2.0), Token::Power, Token::Number(3.0)]
+        );
+
+        // 混合运算
+        let input = "2 * 3 ^ 2 % 4";
+        let mut lexer = Lexer::new(input);
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Number(2.0),
+                Token::Multiply,
+                Token::Number(3.0),
+                Token::Power,
+                Token::Number(2.0),
+                Token::Modulo,
+                Token::Number(4.0)
             ]
         );
     }

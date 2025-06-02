@@ -6,7 +6,7 @@ use std::io::{self, Write};
 /// 运行交互式计算器
 pub fn run() -> Result<(), String> {
     println!("Welcome to the Rust Math Calculator");
-    println!("Supported operators: +, -, *, /, ( )");
+    println!("Supported operators: +, -, *, /, ( ), %, ^");
     println!("Type 'help' for help, 'exit' to exit the program");
     
     // 创建历史管理器
