@@ -33,7 +33,8 @@ pub fn evaluate(tokens: &[Token]) -> Result<f64, String> {
                 while let Some(op) = ops.last() {
                     if matches!(
                         op,
-                        Token::Multiply
+                        Token::UnaryMinus
+                            | Token::Multiply
                             | Token::Divide
                             | Token::Modulo
                             | Token::Power
@@ -245,6 +246,30 @@ mod tests {
 
         // 一元负号位置错误
         assert!(eval_expr("3 -").is_err());
+    }
+
+    #[test]
+    fn test_unary_minus_priority() {
+        // 一元负号优先级测试
+        assert_eq!(eval_expr("-2+4").unwrap(), 2.0); // (-2) + 4 = 2
+        assert_eq!(eval_expr("-2-4").unwrap(), -6.0); // (-2) - 4 = -6
+        assert_eq!(eval_expr("2+-4").unwrap(), -2.0); // 2 + (-4) = -2
+        assert_eq!(eval_expr("2--4").unwrap(), 6.0); // 2 - (-4) = 6
+        assert_eq!(eval_expr("-2*3").unwrap(), -6.0); // (-2) * 3 = -6
+        assert_eq!(eval_expr("-2/4").unwrap(), -0.5); // (-2) / 4 = -0.5
+        assert_eq!(eval_expr("2*-4").unwrap(), -8.0); // 2 * (-4) = -8
+        assert_eq!(eval_expr("2/-4").unwrap(), -0.5); // 2 / (-4) = -0.5
+        assert_eq!(eval_expr("-2^3").unwrap(), -8.0); // -(2^3) = -8
+        assert_eq!(eval_expr("(-2)^3").unwrap(), -8.0); // (-2)^3 = -8
+        assert_eq!(eval_expr("(-2)^2").unwrap(), 4.0); // (-2)^2 = 4
+
+        // 复杂表达式
+        assert_eq!(eval_expr("-3*4+5").unwrap(), -7.0); // (-3*4)+5 = -12+5 = -7
+        assert_eq!(eval_expr("3*-4+5").unwrap(), -7.0); // 3*(-4)+5 = -12+5 = -7
+        assert_eq!(eval_expr("3+4*-5").unwrap(), -17.0); // 3+4*(-5) = 3-20 = -17
+        assert_eq!(eval_expr("(3+4)*-5").unwrap(), -35.0); // (3+4)*(-5) = 7*-5 = -35
+        assert_eq!(eval_expr("-3+4*5").unwrap(), 17.0); // (-3)+4*5 = -3+20 = 17
+        assert_eq!(eval_expr("3+-4*5").unwrap(), -17.0); // 3+(-4*5) = 3-20 = -17
     }
 
     #[test]
