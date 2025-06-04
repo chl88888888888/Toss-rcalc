@@ -37,7 +37,6 @@ impl<'a> Lexer<'a> {
                 '-' => {
                     self.chars.next();
 
-                    // 检查是否是一元负号
                     let is_unary = tokens.is_empty()
                         || matches!(
                             tokens.last(),

@@ -13,17 +13,15 @@ pub fn evaluate(tokens: &[Token]) -> Result<f64, String> {
             Token::Number(n) => values.push(*n),
             Token::LeftParen => ops.push(token.clone()),
             Token::RightParen => {
-                // 计算括号内的表达式
                 while let Some(op) = ops.last() {
                     if *op == Token::LeftParen {
                         break;
                     }
                     perform_operation(&mut values, &mut ops)?;
                 }
-                // 弹出左括号
+
                 ops.pop().ok_or("Mismatched parentheses".to_string())?;
 
-                // 检查括号前是否有一元负号
                 if let Some(Token::UnaryMinus) = ops.last() {
                     perform_operation(&mut values, &mut ops)?;
                 }

@@ -1,54 +1,50 @@
 use crate::evaluator::evaluate;
 use crate::parser::Lexer;
-use crate::history::{HistoryManager, HistoryEntry, current_timestamp};
+use crate::history::{HistoryEntry, HistoryManager};
 use std::io::{self, Write};
 
-/// 运行交互式计算器 (异步)
-pub async fn run() -> Result<(), String> {
+/// run rust calculator (asynchronous)
+pub async fn run(history_manager: &HistoryManager) -> Result<(), String> {
     println!("Welcome to the Rust Math Calculator");
     println!("Supported operators: +, -, *, /, ( ), %, ^");
     println!("Type 'help' for help, 'exit' to exit the program");
-    
-    // 创建历史管理器
-    let history_manager = HistoryManager::new("history/history.json", 50);
-    
     loop {
-        // 显示提示符
+        // show ">"
         print!("> ");
         io::stdout().flush().map_err(|e| e.to_string())?;
         
-        // 读取用户输入
+        // read user's input
         let mut input = String::new();
         io::stdin().read_line(&mut input).map_err(|e| e.to_string())?;
         
-        // 清理输入
+        // clean input
         let input = input.trim();
         
-        // 处理退出命令
+        // solve "exit" command
         if input.eq_ignore_ascii_case("exit") || input.is_empty() {
             println!("Thank you for using and goodbye");
             return Ok(());
         }
         
-        // 处理帮助命令
+        // solve "help" command
         if input.eq_ignore_ascii_case("help") {
             show_help();
             continue;
         }
         
-        // 处理清屏命令
+        // solve "clear" command
         if input.eq_ignore_ascii_case("clear") {
             clear_screen();
             continue;
         }
         
-        // 处理历史记录命令
+        // solve "history" command
         if input.eq_ignore_ascii_case("history") {
-            show_history(&history_manager).await;
+            show_history(history_manager).await;
             continue;
         }
         
-        // 处理清空历史命令
+        // solve "clearhistory" command
         if input.eq_ignore_ascii_case("clearhistory") {
             history_manager.clear_history()
                 .await
@@ -57,21 +53,20 @@ pub async fn run() -> Result<(), String> {
             continue;
         }
         
-        // 执行计算
+        // Perform calculations
         match calculate(input) {
             Ok(result) => {
                 println!(" = {}", result);
                 
-                // 保存成功的历史记录 (异步)
+                // Save a history of success (asynchronous)
                 let entry = HistoryEntry {
                     expression: input.to_string(),
                     result,
-                    timestamp: current_timestamp(),
+                    timestamp: crate::history::current_timestamp(),
                 };
                 
-                // 使用公共方法克隆管理器
+                // Use the cloned manager
                 let manager_clone = history_manager.clone_manager();
-                
                 tokio::spawn(async move {
                     if let Err(e) = manager_clone.add_entry(entry).await {
                         eprintln!("Warning: Failed to save history: {}", e);
@@ -85,14 +80,14 @@ pub async fn run() -> Result<(), String> {
     }
 }
 
-/// 计算表达式
-fn calculate(input: &str) -> Result<f64, String> {
+/// Calculation Expressions (Public API)
+pub fn calculate(input: &str) -> Result<f64, String> {
     let mut lexer = Lexer::new(input);
     let tokens = lexer.tokenize()?;
     evaluate(&tokens)
 }
 
-/// 显示帮助信息
+/// show help
 fn show_help() {
     println!("\nUsage:");
     println!("  Enter a mathematical expression to calculate, e.g., 3+5*2");
@@ -109,15 +104,17 @@ fn show_help() {
     println!("\nNotes:");
     println!("  * The divisor cannot be 0 in a division operation");
     println!("  * Function customization is not supported at this time");
+    println!("  * A negative presquare will lead to an error");
+    println!("  * Power operations support right conjugation (2^3^2 = 2^(3^2) = 512)");
 }
 
-/// 清屏
+/// clear screen
 fn clear_screen() {
     print!("{esc}[2J{esc}[1;1H", esc = 27 as char);
 }
 
-/// 显示历史记录 (异步)
-async fn show_history(manager: &HistoryManager) {
+/// Show history (asynchronous)
+pub async fn show_history(manager: &HistoryManager) {
     match manager.get_history().await {
         Ok(history) => {
             if history.is_empty() {
