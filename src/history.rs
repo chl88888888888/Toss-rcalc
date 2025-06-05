@@ -91,7 +91,7 @@ pub fn current_timestamp() -> String {
 mod tests {
     use super::*;
     use tempfile::tempdir;
-    use tokio::runtime::Builder; // 使用 Builder 替代 Runtime::new
+    use tokio::runtime::Builder; 
 
     #[test]
     fn test_history_manager() {
@@ -105,11 +105,9 @@ mod tests {
 
         let manager = HistoryManager::new(&file_path, 3);
 
-        // 创建多线程运行时
         let rt = Builder::new_multi_thread().enable_all().build().unwrap();
 
         rt.block_on(async {
-            // 添加条目
             let entry1 = HistoryEntry {
                 expression: "2+2".to_string(),
                 result: 4.0,
@@ -118,12 +116,10 @@ mod tests {
 
             manager.add_entry(entry1.clone()).await.unwrap();
 
-            // 检查添加
             let history = manager.get_history().await.unwrap();
             assert_eq!(history.len(), 1);
             assert_eq!(history[0].expression, "2+2");
 
-            // 添加更多条目
             for i in 0..5 {
                 let entry = HistoryEntry {
                     expression: format!("{}+{}", i, i),
@@ -133,14 +129,11 @@ mod tests {
                 manager.add_entry(entry).await.unwrap();
             }
 
-            // 检查最多保留3条
             let history = manager.get_history().await.unwrap();
             assert_eq!(history.len(), 3);
 
-            // 检查最近添加的在最后
             assert_eq!(history[2].expression, "4+4");
 
-            // 清空历史
             manager.clear_history().await.unwrap();
             assert_eq!(manager.get_history().await.unwrap().len(), 0);
         });
