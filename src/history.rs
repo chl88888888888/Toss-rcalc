@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
 use std::path::Path;
 use tokio::fs::File;
 use tokio::io;
@@ -33,12 +34,15 @@ impl HistoryManager {
     pub async fn add_entry(&self, entry: HistoryEntry) -> io::Result<()> {
         let mut history = self.load_history().await.unwrap_or_default();
 
-        history.push(entry);
+        let mut deque = VecDeque::from(history);
 
-        if history.len() > self.max_entries {
-            history.remove(0);
+        deque.push_back(entry);
+
+        while deque.len() > self.max_entries {
+            deque.pop_front();
         }
 
+        history = deque.into_iter().collect();
         self.save_history(&history).await
     }
 
@@ -91,7 +95,7 @@ pub fn current_timestamp() -> String {
 mod tests {
     use super::*;
     use tempfile::tempdir;
-    use tokio::runtime::Builder; 
+    use tokio::runtime::Builder;
 
     #[test]
     fn test_history_manager() {

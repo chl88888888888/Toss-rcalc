@@ -1,5 +1,6 @@
 mod cli;
 mod evaluator;
+mod functions;
 mod history;
 mod parser;
 
@@ -26,18 +27,24 @@ struct Cli {
     ///Silent mode (Print result only)
     #[arg(short = 'q', long)]
     quiet: bool,
+
+    #[arg(short = 'f', long)]
+    fcall: Option<String>,
+
+    #[arg(short = 'd', long)]
+    define: Option<String>,
 }
 
 #[tokio::main]
 async fn main() {
     let cli = Cli::parse();
-    let history_manager = history::HistoryManager::new("history/calc_history.json", 100);
-
+    let history_manager = history::HistoryManager::new("history/calc_history.json", 50);
+    functions::load_functions_async().await;
     if cli.clear_history {
         if let Err(e) = history_manager.clear_history().await {
             eprintln!("Failed to clear history: {}", e);
         } else {
-            println!("Clear the history");
+            println!("History cleared");
         }
         return;
     }
@@ -98,6 +105,34 @@ async fn main() {
                 eprintln!("Failed to solve the expression:'{}' ", expr);
             }
             quiet = true;
+        }
+        return;
+    }
+
+    if let Some(fcall) = cli.fcall {
+        match functions::calculate_with_custom(&fcall) {
+            Ok(result) => {
+                println!("{} = {}", fcall, result);
+
+                // Save to history
+                let entry = history::HistoryEntry {
+                    expression: fcall.clone(),
+                    result,
+                    timestamp: history::current_timestamp(),
+                };
+                if let Err(e) = history_manager.add_entry(entry).await {
+                    eprintln!("Warning: Failed to save history: {}", e);
+                }
+            }
+            Err(e) => println!("Error: {}", e),
+        }
+        return;
+    }
+
+    if let Some(def) = &cli.define {
+        match cli::define_function_async(def).await {
+            Ok(_) => println!("Function defined successfully"),
+            Err(e) => println!("Function definition failed: {}", e),
         }
         return;
     }
