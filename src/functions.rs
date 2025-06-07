@@ -19,7 +19,6 @@ lazy_static! {
         Mutex::new(HashMap::new());
 }
 
-// Async load
 pub async fn load_functions_async() {
     if !Path::new(FUNC_FILE).exists() {
         if let Some(parent) = Path::new(FUNC_FILE).parent() {
@@ -33,7 +32,6 @@ pub async fn load_functions_async() {
     *global_map = map;
 }
 
-// Async save
 pub async fn save_functions_async() {
     let json = {
         let map = CUSTOM_FUNCTIONS.lock().unwrap();
@@ -45,7 +43,6 @@ pub async fn save_functions_async() {
     let _ = fs::write(FUNC_FILE, json).await;
 }
 
-// Async register
 pub async fn register_custom_function_async(
     name: &str,
     parameters: Vec<&str>,
@@ -73,33 +70,39 @@ pub fn expand_custom_functions(expr: &str) -> Result<String, String> {
     let re = Regex::new(r"([a-zA-Z_][a-zA-Z0-9_]*)\s*\(([^()]*)\)").unwrap();
     for _ in 0..20 {
         let map = CUSTOM_FUNCTIONS.lock().unwrap();
-        let temp = re.replace_all(&result, |caps: &regex::Captures| {
-            let name = &caps[1];
-            let args_str = &caps[2];
-            if let Some(func) = map.get(name) {
-                let args: Vec<&str> = args_str.split(',').map(|s| s.trim()).collect();
-                if args.len() != func.parameters.len() {
-                    return format!("__FUNC_ARG_ERR__");
+        let temp = re
+            .replace_all(&result, |caps: &regex::Captures| {
+                let name = &caps[1];
+                let args_str = &caps[2];
+                if let Some(func) = map.get(name) {
+                    let args: Vec<&str> = args_str.split(',').map(|s| s.trim()).collect();
+                    if args.len() != func.parameters.len() {
+                        return format!(
+                            "The number of function parameters is incorrect"
+                        );
+                    }
+                    let mut body = func.expression.clone();
+                    for (param, value) in func.parameters.iter().zip(args.iter()) {
+                        let param_re =
+                            Regex::new(&format!(r"\b{}\b", regex::escape(param))).unwrap();
+                        body = param_re
+                            .replace_all(&body, format!("({})", value))
+                            .to_string();
+                    }
+                    format!("({})", body)
+                } else {
+                    caps[0].to_string()
                 }
-                let mut body = func.expression.clone();
-                for (param, value) in func.parameters.iter().zip(args.iter()) {
-                    let param_re = Regex::new(&format!(r"\b{}\b", regex::escape(param))).unwrap();
-                    // Always wrap argument in parentheses to preserve precedence
-                    body = param_re
-                        .replace_all(&body, format!("({})", value))
-                        .to_string();
-                }
-                format!("({})", body)
-            } else {
-                caps[0].to_string()
-            }
-        }).to_string();
+            })
+            .to_string();
         if temp == result {
             break;
         }
         result = temp;
     }
-    if result.contains("__FUNC_ARG_ERR__") {
+    if result.contains(
+        "The number of function parameters is incorrect",
+    ) {
         return Err("Custom function argument count mismatch".to_string());
     }
     Ok(result)
@@ -115,4 +118,9 @@ pub fn calculate_with_custom(expr: &str) -> Result<f64, String> {
 pub fn list_custom_functions() -> Vec<(String, CustomFunction)> {
     let map = CUSTOM_FUNCTIONS.lock().unwrap();
     map.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+}
+
+pub fn is_function_defined(name: &str) -> bool {
+    let map = CUSTOM_FUNCTIONS.lock().unwrap();
+    map.contains_key(name)
 }

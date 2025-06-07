@@ -28,9 +28,11 @@ struct Cli {
     #[arg(short = 'q', long)]
     quiet: bool,
 
+    ///Use functions
     #[arg(short = 'f', long)]
     fcall: Option<String>,
 
+    ///Define a function
     #[arg(short = 'd', long)]
     define: Option<String>,
 }
@@ -113,8 +115,6 @@ async fn main() {
         match functions::calculate_with_custom(&fcall) {
             Ok(result) => {
                 println!("{} = {}", fcall, result);
-
-                // Save to history
                 let entry = history::HistoryEntry {
                     expression: fcall.clone(),
                     result,

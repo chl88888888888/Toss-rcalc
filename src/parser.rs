@@ -10,6 +10,7 @@ pub enum Token {
     UnaryMinus,
     Modulo,
     Power,
+    FunctionCall(String, Vec<Token>), 
 }
 
 pub struct Lexer<'a> {
@@ -80,6 +81,22 @@ impl<'a> Lexer<'a> {
                     tokens.push(Token::RightParen);
                     self.chars.next();
                 }
+                'a'..='z' | 'A'..='Z' | '_' => {
+                    let name = self.parse_identifier();
+                    match name.to_lowercase().as_str() {
+                        "pi" => tokens.push(Token::Number(std::f64::consts::PI)),
+                        "e" => tokens.push(Token::Number(std::f64::consts::E)),
+                        _ => {
+                            if let Some(&'(') = self.chars.peek() {
+                                self.chars.next(); 
+                                let args = self.parse_function_args()?;
+                                tokens.push(Token::FunctionCall(name, args));
+                            } else {
+                                return Err(format!("Unexpected identifier: {}", name));
+                            }
+                        }
+                    }
+                }
                 '0'..='9' | '.' => {
                     let num = self.parse_number()?;
                     tokens.push(Token::Number(num));
@@ -90,6 +107,70 @@ impl<'a> Lexer<'a> {
             }
         }
         Ok(tokens)
+    }
+
+    fn parse_identifier(&mut self) -> String {
+        let mut ident = String::new();
+        while let Some(&c) = self.chars.peek() {
+            if c.is_ascii_alphanumeric() || c == '_' {
+                ident.push(c);
+                self.chars.next();
+            } else {
+                break;
+            }
+        }
+        ident
+    }
+
+    fn parse_function_args(&mut self) -> Result<Vec<Token>, String> {
+        let mut args = Vec::new();
+        let mut current_arg = String::new();
+        let mut paren_count = 0;
+
+        while let Some(&c) = self.chars.peek() {
+            match c {
+                ')' => {
+                    if paren_count == 0 {
+                        self.chars.next();
+                        if !current_arg.is_empty() {
+                            let mut lexer = Lexer::new(&current_arg);
+                            let tokens = lexer.tokenize()?;
+                            args.extend(tokens);
+                        }
+                        return Ok(args);
+                    } else {
+                        paren_count -= 1;
+                        current_arg.push(c);
+                        self.chars.next();
+                    }
+                }
+                ',' => {
+                    if paren_count == 0 {
+                        self.chars.next(); 
+                        if !current_arg.is_empty() {
+                            let mut lexer = Lexer::new(&current_arg);
+                            let tokens = lexer.tokenize()?;
+                            args.extend(tokens);
+                            current_arg.clear();
+                        }
+                    } else {
+                        current_arg.push(c);
+                        self.chars.next();
+                    }
+                }
+                '(' => {
+                    paren_count += 1;
+                    current_arg.push(c);
+                    self.chars.next();
+                }
+                _ => {
+                    current_arg.push(c);
+                    self.chars.next();
+                }
+            }
+        }
+
+        Err("Unclosed function arguments".to_string())
     }
 
     fn parse_number(&mut self) -> Result<f64, String> {
@@ -123,7 +204,7 @@ mod tests {
         assert_eq!(
             tokens,
             vec![
-                Token::UnaryMinus, // 第一个负号
+                Token::UnaryMinus,
                 Token::LeftParen,
                 Token::UnaryMinus,
                 Token::Number(5.0),

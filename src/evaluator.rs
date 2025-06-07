@@ -1,190 +1,340 @@
 use crate::parser::Token;
 
-pub fn evaluate(tokens: &[Token]) -> Result<f64, String> {
-    if tokens.is_empty() {
-        return Err("Empty expression".to_string());
+pub struct Evaluator;
+
+impl Evaluator {
+    pub fn new() -> Self {
+        Evaluator
     }
 
-    let mut values: Vec<f64> = Vec::new();
-    let mut ops: Vec<Token> = Vec::new();
+    pub fn evaluate(&mut self, tokens: &[Token]) -> Result<f64, String> {
+        if tokens.is_empty() {
+            return Err("Empty expression".to_string());
+        }
 
-    for token in tokens {
-        match token {
-            Token::Number(n) => values.push(*n),
-            Token::LeftParen => ops.push(token.clone()),
-            Token::RightParen => {
-                while let Some(op) = ops.last() {
-                    if *op == Token::LeftParen {
-                        break;
+        let mut values: Vec<f64> = Vec::new();
+        let mut ops: Vec<Token> = Vec::new();
+
+        for token in tokens {
+            match token {
+                Token::Number(n) => values.push(*n),
+                Token::FunctionCall(name, args) => {
+                    let result = self.evaluate_function_call(name, args)?;
+                    values.push(result);
+                }
+                Token::LeftParen => ops.push(token.clone()),
+                Token::RightParen => {
+                    while let Some(op) = ops.last() {
+                        if *op == Token::LeftParen {
+                            break;
+                        }
+                        self.perform_operation(&mut values, &mut ops)?;
                     }
-                    perform_operation(&mut values, &mut ops)?;
-                }
 
-                ops.pop().ok_or("Mismatched parentheses".to_string())?;
+                    ops.pop().ok_or("Mismatched parentheses".to_string())?;
 
-                if let Some(Token::UnaryMinus) = ops.last() {
-                    perform_operation(&mut values, &mut ops)?;
-                }
-            }
-            Token::UnaryMinus => {
-                ops.push(token.clone());
-            }
-            Token::Add | Token::Subtract => {
-                while let Some(op) = ops.last() {
-                    if matches!(
-                        op,
-                        Token::UnaryMinus
-                            | Token::Multiply
-                            | Token::Divide
-                            | Token::Modulo
-                            | Token::Power
-                            | Token::Add
-                            | Token::Subtract
-                    ) {
-                        perform_operation(&mut values, &mut ops)?;
-                    } else {
-                        break;
+                    if let Some(Token::UnaryMinus) = ops.last() {
+                        self.perform_operation(&mut values, &mut ops)?;
                     }
                 }
-                ops.push(token.clone());
-            }
-            Token::Multiply | Token::Divide | Token::Modulo => {
-                while let Some(op) = ops.last() {
-                    if matches!(
-                        op,
-                        Token::Multiply | Token::Divide | Token::Modulo | Token::Power
-                    ) {
-                        perform_operation(&mut values, &mut ops)?;
-                    } else {
-                        break;
-                    }
+                Token::UnaryMinus => {
+                    ops.push(token.clone());
                 }
-                ops.push(token.clone());
+                Token::Add | Token::Subtract => {
+                    while let Some(op) = ops.last() {
+                        if matches!(
+                            op,
+                            Token::UnaryMinus
+                                | Token::Multiply
+                                | Token::Divide
+                                | Token::Modulo
+                                | Token::Power
+                                | Token::Add
+                                | Token::Subtract
+                        ) {
+                            self.perform_operation(&mut values, &mut ops)?;
+                        } else {
+                            break;
+                        }
+                    }
+                    ops.push(token.clone());
+                }
+                Token::Multiply | Token::Divide | Token::Modulo => {
+                    while let Some(op) = ops.last() {
+                        if matches!(
+                            op,
+                            Token::Multiply | Token::Divide | Token::Modulo | Token::Power
+                        ) {
+                            self.perform_operation(&mut values, &mut ops)?;
+                        } else {
+                            break;
+                        }
+                    }
+                    ops.push(token.clone());
+                }
+                Token::Power => {
+                    ops.push(token.clone());
+                }
+                #[allow(unreachable_patterns)]
+                _ => return Err(format!("Unexpected token: {:?}", token)),
+            }
+        }
+        while let Some(op) = ops.pop() {
+            match op {
+                Token::UnaryMinus => {
+                    if values.is_empty() {
+                        return Err("Missing operand for unary minus".to_string());
+                    }
+                    let value = values.pop().unwrap();
+                    values.push(-value);
+                }
+                _ => {
+                    if values.len() < 2 {
+                        return Err("Missing operand".to_string());
+                    }
+                    let b = values.pop().unwrap();
+                    let a = values.pop().unwrap();
+                    let res = self.apply_operator(&op, a, b)?;
+                    values.push(res);
+                }
+            }
+        }
+
+        match values.len() {
+            1 => Ok(values[0]),
+            0 => Err("No result produced".to_string()),
+            _ => Err(format!("Too many values in the stack: {:?}", values)),
+        }
+    }
+
+    fn zero_if_tiny(val: f64) -> f64 {
+        if val.abs() < 1e-8 { 0.0 } else { val }
+    }
+
+    fn evaluate_function_call(&mut self, name: &str, args: &[Token]) -> Result<f64, String> {
+        match name.to_lowercase().as_str() {
+            "sin" => {
+                if args.len() != 1 {
+                    return Err("sin() expects 1 argument".to_string());
+                }
+                return match args[0] {
+                    Token::Number(n) => Ok(Self::zero_if_tiny(n.sin())),
+                    _ => Err("sin() expects a number".to_string()),
+                };
+            }
+            "cos" => {
+                if args.len() != 1 {
+                    return Err("cos() expects 1 argument".to_string());
+                }
+                return match args[0] {
+                    Token::Number(n) => Ok(Self::zero_if_tiny(n.cos())),
+                    _ => Err("cos() expects a number".to_string()),
+                };
+            }
+            "tan" => {
+                if args.len() != 1 {
+                    return Err("tan() expects 1 argument".to_string());
+                }
+                return match args[0] {
+                    Token::Number(n) => Ok(Self::zero_if_tiny(n.tan())),
+                    _ => Err("tan() expects a number".to_string()),
+                };
+            }
+            "log" => {
+                if args.len() != 1 {
+                    return Err("log() expects 1 argument".to_string());
+                }
+                return match args[0] {
+                    Token::Number(n) => {
+                        if n <= 0.0 {
+                            Err("log() argument must be positive".to_string())
+                        } else {
+                            Ok(Self::zero_if_tiny(n.ln()))
+                        }
+                    }
+                    _ => Err("log() expects a number".to_string()),
+                };
+            }
+            "exp" => {
+                if args.len() != 1 {
+                    return Err("exp() expects 1 argument".to_string());
+                }
+                return match args[0] {
+                    Token::Number(n) => Ok(Self::zero_if_tiny(n.exp())),
+                    _ => Err("exp() expects a number".to_string()),
+                };
+            }
+            "arcsin" => {
+                if args.len() != 1 {
+                    return Err("asin() expects 1 argument".to_string());
+                }
+                return match args[0] {
+                    Token::Number(n) => Ok(Self::zero_if_tiny(n.asin())),
+                    _ => Err("asin() expects a number".to_string()),
+                };
+            }
+            "arccos" => {
+                if args.len() != 1 {
+                    return Err("acos() expects 1 argument".to_string());
+                }
+                return match args[0] {
+                    Token::Number(n) => Ok(Self::zero_if_tiny(n.acos())),
+                    _ => Err("acos() expects a number".to_string()),
+                };
+            }
+            "arctan" => {
+                if args.len() != 1 {
+                    return Err("atan() expects 1 argument".to_string());
+                }
+                return match args[0] {
+                    Token::Number(n) => Ok(Self::zero_if_tiny(n.atan())),
+                    _ => Err("atan() expects a number".to_string()),
+                };
+            }
+            "fact" | "factorial" => {
+                if args.len() != 1 {
+                    return Err("fact() expects 1 argument".to_string());
+                }
+                return match args[0] {
+                    Token::Number(n) => {
+                        if n < 0.0 || n.fract() != 0.0 {
+                            Err("fact() expects a non-negative integer".to_string())
+                        } else {
+                            let mut res = 1u128;
+                            let mut i = 1u128;
+                            let n = n as u128;
+                            while i <= n {
+                                res = res.checked_mul(i).ok_or("fact() overflow")?;
+                                i += 1;
+                            }
+                            Ok(res as f64)
+                        }
+                    }
+                    _ => Err("fact() expects a number".to_string()),
+                };
+            }
+            "comb" => {
+                if args.len() != 2 {
+                    return Err("comb() expects 2 arguments".to_string());
+                }
+                return match (&args[0], &args[1]) {
+                    (Token::Number(n), Token::Number(k)) => {
+                        if *n < 0.0 || *k < 0.0 || n.fract() != 0.0 || k.fract() != 0.0 || k > n {
+                            Err("comb(n, k) expects 0 <= k <= n, both integers".to_string())
+                        } else {
+                            let n = *n as u128;
+                            let k = *k as u128;
+                            let mut res = 1u128;
+                            for i in 0..k {
+                                res = res.checked_mul(n - i).ok_or("comb() overflow")?;
+                                res = res.checked_div(i + 1).ok_or("comb() division by zero")?;
+                            }
+                            Ok(res as f64)
+                        }
+                    }
+                    _ => Err("comb() expects two numbers".to_string()),
+                };
+            }
+            "perm" => {
+                if args.len() != 2 {
+                    return Err("perm() expects 2 arguments".to_string());
+                }
+                return match (&args[0], &args[1]) {
+                    (Token::Number(n), Token::Number(k)) => {
+                        if *n < 0.0 || *k < 0.0 || n.fract() != 0.0 || k.fract() != 0.0 || k > n {
+                            Err("perm(n, k) expects 0 <= k <= n, both integers".to_string())
+                        } else {
+                            let n = *n as u128;
+                            let k = *k as u128;
+                            let mut res = 1u128;
+                            for i in 0..k {
+                                res = res.checked_mul(n - i).ok_or("perm() overflow")?;
+                            }
+                            Ok(res as f64)
+                        }
+                    }
+                    _ => Err("perm() expects two numbers".to_string()),
+                };
+            }
+            _ => {}
+        }
+
+        if !crate::functions::is_function_defined(name) {
+            return Err(format!("Function '{}' is not defined", name));
+        }
+        let arg_strs: Vec<String> = args
+            .iter()
+            .map(|arg| match arg {
+                Token::Number(n) => Ok(n.to_string()),
+                _ => Err("Function arguments must be numbers".to_string()),
+            })
+            .collect::<Result<Vec<String>, String>>()?;
+
+        let expr = format!("{}({})", name, arg_strs.join(","));
+        crate::functions::calculate_with_custom(&expr)
+    }
+
+    fn apply_operator(&self, op: &Token, a: f64, b: f64) -> Result<f64, String> {
+        match op {
+            Token::Add => Ok(a + b),
+            Token::Subtract => Ok(a - b),
+            Token::Multiply => Ok(a * b),
+            Token::Divide => {
+                if b == 0.0 {
+                    return Err("Division by zero".to_string());
+                }
+                Ok(a / b)
+            }
+            Token::Modulo => {
+                if a.fract() != 0.0 || b.fract() != 0.0 {
+                    return Err("Modulo operation requires integer operands".to_string());
+                }
+                if b == 0.0 {
+                    return Err("Modulo by zero".to_string());
+                }
+                Ok((a as i64 % b as i64) as f64)
             }
             Token::Power => {
-                ops.push(token.clone());
-            }
-        }
-    }
-    while let Some(op) = ops.pop() {
-        match op {
-            Token::UnaryMinus => {
-                if values.is_empty() {
-                    return Err("Missing operand for unary minus".to_string());
+                if a == 0.0 && b == 0.0 {
+                    return Err("Undefined operation: 0^0".to_string());
                 }
-                let value = values.pop().unwrap();
-                values.push(-value);
-            }
-            _ => {
-                if values.len() < 2 {
-                    return Err("Missing operand".to_string());
+                if a < 0.0 && b.fract() != 0.0 {
+                    return Err("Negative base with fractional exponent is undefined".to_string());
                 }
-                let b = values.pop().unwrap();
-                let a = values.pop().unwrap();
-                let res = match op {
-                    Token::Add => a + b,
-                    Token::Subtract => a - b,
-                    Token::Multiply => a * b,
-                    Token::Divide => {
-                        if b == 0.0 {
-                            return Err("Division by zero".to_string());
-                        }
-                        a / b
-                    }
-                    Token::Modulo => {
-                        if a.fract() != 0.0 || b.fract() != 0.0 {
-                            return Err("Modulo operation requires integer operands".to_string());
-                        }
-                        if b == 0.0 {
-                            return Err("Modulo by zero".to_string());
-                        }
-                        (a as i64 % b as i64) as f64
-                    }
-                    Token::Power => {
-                        if a == 0.0 && b == 0.0 {
-                            return Err("Undefined operation: 0^0".to_string());
-                        }
-                        if a < 0.0 && b.fract() != 0.0 {
-                            return Err(
-                                "Negative base with fractional exponent is undefined".to_string()
-                            );
-                        }
-                        let result = a.powf(b);
-                        if result.is_nan() {
-                            return Err(format!("Invalid operation: ({})^({})", a, b));
-                        }
-                        result
-                    }
-                    _ => return Err(format!("Unexpected operator: {:?}", op)),
-                };
-                values.push(res);
+                let result = a.powf(b);
+                if result.is_nan() {
+                    return Err(format!("Invalid operation: ({})^({})", a, b));
+                }
+                Ok(result)
             }
+            _ => Err(format!("Unexpected operator: {:?}", op)),
         }
     }
 
-    match values.len() {
-        1 => Ok(values[0]),
-        0 => Err("No result produced".to_string()),
-        _ => Err(format!("Too many values in the stack: {:?}", values)),
+    fn perform_operation(&self, values: &mut Vec<f64>, ops: &mut Vec<Token>) -> Result<(), String> {
+        let op = ops.pop().ok_or("Missing operator".to_string())?;
+        if op == Token::UnaryMinus {
+            if values.is_empty() {
+                return Err("Missing operand for unary minus".to_string());
+            }
+            let value = values.pop().unwrap();
+            values.push(-value);
+            return Ok(());
+        }
+        if values.len() < 2 {
+            return Err("Missing operand".to_string());
+        }
+        let b = values.pop().unwrap();
+        let a = values.pop().unwrap();
+
+        let res = self.apply_operator(&op, a, b)?;
+        values.push(res);
+        Ok(())
     }
 }
 
-fn perform_operation(values: &mut Vec<f64>, ops: &mut Vec<Token>) -> Result<(), String> {
-    let op = ops.pop().ok_or("Missing operator".to_string())?;
-    if op == Token::UnaryMinus {
-        if values.is_empty() {
-            return Err("Missing operand for unary minus".to_string());
-        }
-        let value = values.pop().unwrap();
-        values.push(-value);
-        return Ok(());
-    }
-    if values.len() < 2 {
-        return Err("Missing operand".to_string());
-    }
-    let b = values.pop().unwrap();
-    let a = values.pop().unwrap();
-
-    let res = match op {
-        Token::Add => a + b,
-        Token::Subtract => a - b,
-        Token::Multiply => a * b,
-        Token::Divide => {
-            if b == 0.0 {
-                return Err("Division by zero".to_string());
-            }
-            a / b
-        }
-        Token::Modulo => {
-            if a.fract() != 0.0 {
-                return Err("Modulo operation requires integer operands".to_string());
-            }
-            if b.fract() != 0.0 {
-                return Err("Modulo operation requires integer operands".to_string());
-            }
-            if b == 0.0 {
-                return Err("Modulo by zero".to_string());
-            }
-            (a as i64 % b as i64) as f64
-        }
-        Token::Power => {
-            if a == 0.0 && b == 0.0 {
-                return Err("Undefined operation: 0^0".to_string());
-            }
-            if a < 0.0 && b.fract() != 0.0 {
-                return Err("Negative base with fractional exponent is undefined".to_string());
-            }
-            let result = a.powf(b);
-            if result.is_nan() {
-                return Err(format!("Invalid operation: ({})^({})", a, b));
-            }
-            result
-        }
-        _ => return Err(format!("Unexpected operator: {:?}", op)),
-    };
-
-    values.push(res);
-    Ok(())
+pub fn evaluate(tokens: &[Token]) -> Result<f64, String> {
+    Evaluator::new().evaluate(tokens)
 }
 
 #[cfg(test)]
