@@ -1,0 +1,14 @@
+{
+  "g": {
+    "parameters": [
+      "x"
+    ],
+    "expression": "x^2"
+  },
+  "f": {
+    "parameters": [
+      "x"
+    ],
+    "expression": "x^2"
+  }
+}
